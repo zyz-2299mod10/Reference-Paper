@@ -202,15 +202,7 @@ DETR-style head 使用 focal loss、且僅以 50 張影像訓練，輸出分數�
 
 ---
 
-### 3.3 Gram Anchoring 【設定確認】
-
-若 1M SSL 是 DINOv3 的 continued pretraining，確認是否啟用 **Gram anchoring**。
-
-DINOv3 導入此技術正是為了處理 **dense feature map 在長 schedule 訓練下退化**的已知問題。未啟用可能導致 patch-level 特徵劣化。
-
----
-
-### 3.4 FP 樣本檢視 【半天】
+### 3.3 FP 樣本檢視 【半天】
 
 1. 將 DINO 的 FP **按分數由高到低全部拉出目視**（量級約 150 張）
 2. 用 DINOv3 CLS embedding 對這些 FP 做分群
@@ -220,7 +212,7 @@ DINOv3 導入此技術正是為了處理 **dense feature map 在長 schedule 訓
 
 ---
 
-### 3.5 SimpleFPN 的輸入層 【設定確認】
+### 3.4 SimpleFPN 的輸入層 【設定確認】
 
 確認 SimpleFPN 吃的是 backbone 的**哪幾層**。
 
@@ -277,33 +269,7 @@ DINOv3 導入此技術正是為了處理 **dense feature map 在長 schedule 訓
 
 ---
 
-### 4.4 【零成本】修正評估協定
-
-**(1) 改用 matched recall 比較**
-
-將 DINO 的 threshold 調整到與對照模型**相同 recall**，再比較 precision。
-
-- 回答的問題是：「在同樣的漏檢風險下，誰讓人工少複閱幾張」—— 這正是產品問題
-- threshold 僅在 val 上決定，不觸碰 test set
-
-**(2) image-level 聚合改為 top-3 mean**
-
-```python
-# Before
-image_score = max(box_scores)
-
-# After
-image_score = mean(sorted(box_scores, reverse=True)[:3])
-# 或 logsumexp(box_scores)
-```
-
-避免極值統計造成的脆弱性。這是修正結構性缺陷，非為特定模型特調。
-
-**(3) 在 val 上做 temperature scaling**
-
----
-
-### 4.5 凍結 backbone / LoRA ablation
+### 4.4 凍結 backbone / LoRA ablation
 
 一次訓練，資訊量最大：
 
@@ -316,7 +282,7 @@ image_score = mean(sorted(box_scores, reverse=True)[:3])
 
 ---
 
-### 4.6 高頻 CNN 側支路（架構改動）
+### 4.5 高頻 CNN 側支路（架構改動）
 
 若 4.1 / 4.2 後仍有落差，考慮此項。
 
@@ -330,7 +296,7 @@ image_score = mean(sorted(box_scores, reverse=True)[:3])
 
 ---
 
-### 4.7 `close_mosaic` 的單位修正（若保留 mosaic 路線）
+### 4.6 `close_mosaic` 的單位修正（若保留 mosaic 路線）
 
 `close_mosaic` 的單位是 epoch，而 epoch 大小與資料集規模成正比。沿用 COCO 的預設值「10」，在 50 張資料上等於把 clean 階段從 ~18,500 steps 縮到 ~60 steps。
 
@@ -347,19 +313,18 @@ image_score = mean(sorted(box_scores, reverse=True)[:3])
 | 1 | 測 mosaic 版本的 image-level 指標（4.3，**診斷用**） | 評估 | 零 |
 | 2 | Normalization 一致性檢查（3.1） | 除錯 | 10 min |
 | 3 | Token norm heatmap 檢查（3.2） | 除錯 | 10 min |
-| 4 | 改用 matched recall + top-3 mean（4.4） | 評估 | 零，重算 |
-| 5 | FP 樣本目視 + 分群（3.4） | 診斷 | 半天 |
-| 6 | **輸入解析度 ×2（4.1）** | 訓練 | 1 run |
-| 7 | **Random crop 取代 mosaic（4.2）** | 訓練 | 1 run |
-| 8 | 凍結 backbone ablation（4.5） | 訓練 | 1 run |
-| 9 | SimpleFPN 多層特徵（3.5） | 訓練 | 1 run |
-| 10 | 高頻 CNN 側支路（4.6） | 架構 | 中 |
+| 4 | FP 樣本目視 + 分群（3.3） | 診斷 | 半天 |
+| 5 | **輸入解析度 ×2（4.1）** | 訓練 | 1 run |
+| 6 | **Random crop 取代 mosaic（4.2）** | 訓練 | 1 run |
+| 7 | 凍結 backbone ablation（4.4） | 訓練 | 1 run |
+| 8 | SimpleFPN 多層特徵（3.4） | 訓練 | 1 run |
+| 9 | 高頻 CNN 側支路（4.5） | 架構 | 中 |
 
-**#1~#5 不需訓練，可在一天內完成。**
+**#1~#4 不需訓練，可在一天內完成。**
 
-**#6（解析度 ×2）是主線** —— 根因 A 是目前唯一有直接證據支持的根因，mosaic 實驗的全面劣化更進一步佐證了它。
+**#5（解析度 ×2）是主線** —— 根因 A 是目前唯一有直接證據支持的根因，mosaic 實驗的全面劣化更進一步佐證了它。
 
-**#7（random crop）是根因 B 的唯一乾淨驗證** —— 若 #1 的結果指向根因 B 存在，則將 #7 提前到與 #6 同等優先。
+**#6（random crop）是根因 B 的唯一乾淨驗證** —— 若 #1 的結果指向根因 B 存在，則將 #6 提前到與 #5 同等優先。
 
 ---
 
@@ -367,7 +332,7 @@ image_score = mean(sorted(box_scores, reverse=True)[:3])
 
 - ❌ **不新增任何標註資料**
 - ❌ **不做 per-dataset 的超參數搜尋** —— 所有改動必須有物理或架構層面的理由，不得靠 test set 反覆試誤
-- ❌ **不在 test set 上調整任何參數** —— threshold 一律在 val 上決定
+- ❌ **不在 test set 上調整任何參數**
 - ✅ **維持架構公平性**：DINO 與 YOLOv26 使用相同 decoder、相同標註量（50 張）、相同評估協定
 - ✅ **Recipe 與 backbone 側的架構選擇不視為不公平** —— 每個 backbone 使用其適配的訓練配方是文獻慣例（layer decay 已是此類選擇）
 - ✅ 任何 augmentation / schedule 的修改，**若同時適用於 YOLOv26-50FS，則兩邊同步套用**
@@ -379,7 +344,7 @@ image_score = mean(sorted(box_scores, reverse=True)[:3])
 
 | 主題 | 文獻 |
 |---|---|
-| DINOv3 / Gram anchoring | Siméoni et al., *DINOv3*, arXiv:2508.10104, 2025 |
+| DINOv3 | Siméoni et al., *DINOv3*, arXiv:2508.10104, 2025 |
 | ViT artifact tokens | Darcet et al., *Vision Transformers Need Registers*, ICLR 2024 |
 | ViT detection baseline | Li et al., *Exploring Plain Vision Transformer Backbones for Object Detection* (ViTDet), ECCV 2022 |
 | DINOv3 dense adapter 設計 | Dino U-Net (2025) / SegDINO (2025) / DINO-AugSeg (2026) |
